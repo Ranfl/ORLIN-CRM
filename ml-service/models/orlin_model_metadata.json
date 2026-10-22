@@ -1,0 +1,53 @@
+{
+    "model_name": "ORLIN CRM RFM K-Means",
+    "model_version": "kmeans-v1",
+    "algorithm": "KMeans",
+    "preprocessing": "StandardScaler",
+    "features": [
+        "Recency",
+        "Frequency",
+        "Monetary"
+    ],
+    "k": 4,
+    "random_state": 42,
+    "n_init": 20,
+    "cluster_mapping": {
+        "0": {
+            "code": "VVIP",
+            "name": "VVIP Customer",
+            "objective": "Retention"
+        },
+        "1": {
+            "code": "AT_RISK",
+            "name": "At Risk Customer",
+            "objective": "Reactivation"
+        },
+        "2": {
+            "code": "INACTIVE",
+            "name": "Inactive Customer",
+            "objective": "Win-back / Re-engagement"
+        },
+        "3": {
+            "code": "LOYAL",
+            "name": "Loyal Customer",
+            "objective": "Retention"
+        }
+    },
+    "evaluation": {
+        "silhouette_score": 0.4825,
+        "davies_bouldin_index": 0.5721,
+        "calinski_harabasz_score": 430.41
+    },
+    "segment_distribution": {
+        "0": 9,
+        "1": 82,
+        "2": 8,
+        "3": 101
+    },
+    "notes": {
+        "cluster_0": "Very active, very high frequency and monetary value",
+        "cluster_1": "Higher recency with relatively lower frequency and monetary value",
+        "cluster_2": "Very high recency, indicating inactive customers",
+        "cluster_3": "Active customers with moderate-to-high frequency and monetary value"
+    }
+}

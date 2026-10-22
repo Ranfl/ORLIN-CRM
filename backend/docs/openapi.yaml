@@ -1,0 +1,979 @@
+openapi: 3.0.3
+
+info:
+  title: ORLIN CRM API
+  version: 1.0.0
+  description: |
+    Dokumentasi REST API ORLIN CRM.
+
+    Modul yang saat ini sudah tersedia:
+    - Authentication
+    - Customer Management
+    - Service Management
+    - Transactions
+    - RFM & K-Means Analysis
+    - Customer Intelligence
+    - Promotion Strategy
+    - Campaign Management
+    - Campaign Targeting
+    - Campaign Delivery Simulation/Test
+
+    Authentication menggunakan JWT yang disimpan dalam HttpOnly cookie `orlin_token`.
+    Jalankan endpoint Login terlebih dahulu. Cookie login kemudian digunakan oleh request
+    berikutnya pada host yang sama.
+
+servers:
+  - url: /
+    description: Same host as Swagger UI
+
+tags:
+  - name: Health
+  - name: Authentication
+  - name: Customers
+  - name: Services
+  - name: Transactions
+  - name: Analysis
+  - name: Promotion Strategies
+  - name: Campaigns
+
+security:
+  - cookieAuth: []
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Backend health check
+      security: []
+      responses:
+        '200':
+          description: Backend berjalan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/db-health:
+    get:
+      tags: [Health]
+      summary: Database connection health check
+      security: []
+      responses:
+        '200':
+          description: Database terhubung
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: owner
+              password: your-password
+      responses:
+        '200':
+          description: Login berhasil dan HttpOnly cookie dibuat
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Cookie authentication `orlin_token`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Mendapatkan user yang sedang login
+      responses:
+        '200':
+          description: User aktif
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout dan menghapus authentication cookie
+      responses:
+        '200':
+          description: Logout berhasil
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/customers:
+    get:
+      tags: [Customers]
+      summary: Daftar customer
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Cari kode, nama, WhatsApp, atau email
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, all]
+            default: active
+      responses:
+        '200':
+          description: Daftar customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Customers]
+      summary: Tambah customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerWriteRequest'
+            example:
+              name: Customer Baru
+              whatsapp: '6281234567890'
+              email: customer@example.com
+      responses:
+        '201':
+          description: Customer berhasil dibuat
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/customers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Customers]
+      summary: Detail customer
+      responses:
+        '200':
+          description: Detail customer
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Customers]
+      summary: Update customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerWriteRequest'
+      responses:
+        '200':
+          description: Customer berhasil diperbarui
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Customers]
+      summary: Nonaktifkan customer
+      description: Owner only
+      responses:
+        '200':
+          description: Customer berhasil dinonaktifkan
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/customers/{id}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Customers]
+      summary: Aktifkan kembali customer
+      description: Owner only
+      responses:
+        '200':
+          description: Customer aktif kembali
+
+  /api/services:
+    get:
+      tags: [Services]
+      summary: Daftar layanan
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, all]
+            default: active
+      responses:
+        '200':
+          description: Daftar layanan
+    post:
+      tags: [Services]
+      summary: Tambah layanan
+      description: Owner only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceWriteRequest'
+            example:
+              serviceName: Hair Spa
+              price: 150000
+      responses:
+        '201':
+          description: Layanan berhasil dibuat
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/services/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Services]
+      summary: Detail layanan
+      responses:
+        '200':
+          description: Detail layanan
+    put:
+      tags: [Services]
+      summary: Update layanan
+      description: Owner only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServiceWriteRequest'
+      responses:
+        '200':
+          description: Layanan berhasil diperbarui
+    delete:
+      tags: [Services]
+      summary: Nonaktifkan layanan
+      description: Owner only
+      responses:
+        '200':
+          description: Layanan dinonaktifkan
+
+  /api/services/{id}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Services]
+      summary: Aktifkan kembali layanan
+      description: Owner only
+      responses:
+        '200':
+          description: Layanan aktif kembali
+
+  /api/transactions:
+    get:
+      tags: [Transactions]
+      summary: Daftar transaksi
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Pencarian kode transaksi
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Daftar transaksi
+    post:
+      tags: [Transactions]
+      summary: Buat transaksi
+      description: Total dan harga layanan dihitung oleh backend.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionWriteRequest'
+            example:
+              customerId: 1
+              transactionDate: '2026-10-20T10:30:00'
+              items:
+                - serviceId: 1
+                  quantity: 1
+                - serviceId: 2
+                  quantity: 1
+      responses:
+        '201':
+          description: Transaksi berhasil disimpan
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/transactions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Transactions]
+      summary: Detail transaksi
+      responses:
+        '200':
+          description: Detail transaksi
+    put:
+      tags: [Transactions]
+      summary: Update transaksi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionWriteRequest'
+      responses:
+        '200':
+          description: Transaksi berhasil diperbarui
+    delete:
+      tags: [Transactions]
+      summary: Hapus transaksi
+      description: Owner only
+      responses:
+        '200':
+          description: Transaksi berhasil dihapus
+
+  /api/analysis:
+    get:
+      tags: [Analysis]
+      summary: Riwayat analysis run
+      responses:
+        '200':
+          description: Daftar analysis run
+
+  /api/analysis/run:
+    post:
+      tags: [Analysis]
+      summary: Jalankan RFM + K-Means analysis
+      description: |
+        Owner only.
+
+        Pipeline: MySQL transactions -> Node.js -> FastAPI -> RFM -> StandardScaler ->
+        K-Means -> segment mapping -> simpan RFM dan cluster result.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRunRequest'
+            example:
+              name: Baseline RFM ORLIN 2023-2026
+              startDate: '2023-07-01'
+              endDate: '2026-06-30'
+              referenceDate: '2026-06-30'
+      responses:
+        '201':
+          description: Analysis selesai
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/analysis/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Analysis]
+      summary: Detail analysis run
+      responses:
+        '200':
+          description: Detail analysis dan clustering
+
+  /api/analysis/{id}/summary:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Analysis]
+      summary: Summary Customer Intelligence
+      description: Metrik clustering, distribusi segmen, dan statistik RFM.
+      responses:
+        '200':
+          description: Summary analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisSummaryResponse'
+
+  /api/analysis/{id}/customers:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/Limit'
+      - name: search
+        in: query
+        schema:
+          type: string
+      - name: segment
+        in: query
+        schema:
+          type: string
+          enum: [VVIP, LOYAL, AT_RISK, INACTIVE]
+    get:
+      tags: [Analysis]
+      summary: Daftar customer hasil analysis
+      responses:
+        '200':
+          description: Customer intelligence list
+
+  /api/analysis/{id}/customers/{customerId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: customerId
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      tags: [Analysis]
+      summary: Detail RFM dan segment satu customer
+      responses:
+        '200':
+          description: Customer intelligence detail
+
+  /api/promotion-strategies:
+    get:
+      tags: [Promotion Strategies]
+      summary: Daftar strategi promosi
+      parameters:
+        - name: segment
+          in: query
+          schema:
+            type: string
+            enum: [VVIP, LOYAL, AT_RISK, INACTIVE]
+      responses:
+        '200':
+          description: Daftar promotion strategy
+
+  /api/promotion-strategies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Promotion Strategies]
+      summary: Detail promotion strategy
+      responses:
+        '200':
+          description: Detail strategi promosi
+
+  /api/campaigns:
+    get:
+      tags: [Campaigns]
+      summary: Daftar campaign
+      responses:
+        '200':
+          description: Daftar campaign
+    post:
+      tags: [Campaigns]
+      summary: Buat campaign
+      description: Owner only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignCreateRequest'
+            example:
+              campaignName: Comeback Promo November
+              analysisRunId: 4
+              segmentCode: AT_RISK
+              promotionStrategyId: 3
+              promotionType: discount
+              promotionValue: 15
+              promotionUnit: percent
+              offerDescription: Diskon comeback khusus pelanggan At Risk.
+              startDatetime: '2026-11-01T09:00:00'
+              endDatetime: '2026-11-07T23:59:59'
+              whatsappEnabled: true
+              emailEnabled: true
+              whatsappMessage: Hai! Ada promo comeback spesial dari ORLIN Salon untuk kamu.
+              emailSubject: Comeback Promo ORLIN Salon
+              emailBody: Kami punya promo khusus untuk menyambut kamu kembali ke ORLIN Salon.
+              deliveryMode: simulation
+      responses:
+        '201':
+          description: Campaign berhasil dibuat
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/campaigns/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Campaigns]
+      summary: Detail campaign
+      responses:
+        '200':
+          description: Detail campaign dan jumlah target
+
+  /api/campaigns/{id}/generate-targets:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Campaigns]
+      summary: Generate dan freeze target campaign
+      description: Owner only. Target merupakan snapshot dari segment pada analysis run campaign.
+      responses:
+        '201':
+          description: Target berhasil dibekukan
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/campaigns/{id}/simulate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Campaigns]
+      summary: Simulasikan delivery campaign
+      description: Tidak mengirim pesan nyata. Membuat log status simulated.
+      responses:
+        '201':
+          description: Simulasi berhasil
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/campaigns/{id}/test-delivery:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Campaigns]
+      summary: Test delivery ke kontak testing
+      description: Maksimal satu WhatsApp dan satu Email per campaign test.
+      responses:
+        '200':
+          description: Test delivery selesai; hasil channel dapat sukses/gagal
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/campaigns/{id}/delivery-summary:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Campaigns]
+      summary: Summary delivery campaign
+      responses:
+        '200':
+          description: Ringkasan delivery per channel/status
+
+  /api/campaigns/{id}/delivery-logs:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/Limit'
+      - name: channel
+        in: query
+        schema:
+          type: string
+          enum: [whatsapp, email]
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum: [pending, simulated, sent, failed]
+    get:
+      tags: [Campaigns]
+      summary: Daftar delivery log campaign
+      responses:
+        '200':
+          description: Delivery logs dan pagination
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: orlin_token
+      description: JWT HttpOnly cookie dari POST /api/auth/login
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+  responses:
+    BadRequest:
+      description: Request tidak valid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Authentication diperlukan atau session tidak valid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: User tidak memiliki akses
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflict dengan state/data yang sudah ada
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ValidationError:
+      description: Validasi request gagal
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: ORLIN CRM Backend is running
+        environment:
+          type: string
+          example: development
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Request gagal
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [owner, staff]
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+        customerCode:
+          type: string
+        name:
+          type: string
+        whatsapp:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+
+    CustomerWriteRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 150
+        whatsapp:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    CustomerListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            customers:
+              type: array
+              items:
+                $ref: '#/components/schemas/Customer'
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+
+    ServiceWriteRequest:
+      type: object
+      required: [serviceName, price]
+      properties:
+        serviceName:
+          type: string
+          maxLength: 150
+        price:
+          type: number
+          minimum: 0
+
+    TransactionItemRequest:
+      type: object
+      required: [serviceId]
+      properties:
+        serviceId:
+          type: integer
+          minimum: 1
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+
+    TransactionWriteRequest:
+      type: object
+      required: [customerId, transactionDate, items]
+      properties:
+        customerId:
+          type: integer
+          minimum: 1
+        transactionDate:
+          type: string
+          format: date-time
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TransactionItemRequest'
+
+    AnalysisRunRequest:
+      type: object
+      required: [name, startDate, endDate, referenceDate]
+      properties:
+        name:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        referenceDate:
+          type: string
+          format: date
+
+    SegmentDistribution:
+      type: object
+      properties:
+        code:
+          type: string
+          enum: [VVIP, LOYAL, AT_RISK, INACTIVE]
+        name:
+          type: string
+        objective:
+          type: string
+        total:
+          type: integer
+        percentage:
+          type: number
+
+    AnalysisSummaryResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            analysis:
+              type: object
+            metrics:
+              type: object
+              properties:
+                silhouetteScore:
+                  type: number
+                daviesBouldinIndex:
+                  type: number
+                calinskiHarabaszScore:
+                  type: number
+            segmentDistribution:
+              type: array
+              items:
+                $ref: '#/components/schemas/SegmentDistribution'
+            rfmStatistics:
+              type: object
+
+    CampaignCreateRequest:
+      type: object
+      required:
+        - campaignName
+        - analysisRunId
+        - segmentCode
+        - promotionType
+        - startDatetime
+        - endDatetime
+      properties:
+        campaignName:
+          type: string
+        analysisRunId:
+          type: integer
+          minimum: 1
+        segmentCode:
+          type: string
+          enum: [VVIP, LOYAL, AT_RISK, INACTIVE]
+        promotionStrategyId:
+          type: integer
+          nullable: true
+        promotionType:
+          type: string
+          enum: [discount, cashback, voucher, bundling, other]
+        promotionValue:
+          type: number
+          nullable: true
+        promotionUnit:
+          type: string
+          enum: [percent, amount]
+          nullable: true
+        offerDescription:
+          type: string
+          nullable: true
+        startDatetime:
+          type: string
+          format: date-time
+        endDatetime:
+          type: string
+          format: date-time
+        whatsappEnabled:
+          type: boolean
+          default: false
+        emailEnabled:
+          type: boolean
+          default: false
+        whatsappMessage:
+          type: string
+          nullable: true
+        emailSubject:
+          type: string
+          nullable: true
+        emailBody:
+          type: string
+          nullable: true
+        deliveryMode:
+          type: string
+          enum: [simulation, test, live]
+          default: simulation
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        totalData:
+          type: integer
+        totalPages:
+          type: integer
