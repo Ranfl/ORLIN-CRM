@@ -8,25 +8,68 @@ const {
   Segment,
 } = require("../models");
 
+// ==========================================
 // DELIVERY PROVIDERS
+// ==========================================
+
 const { sendTestEmail } = require("./email.service");
 
 const { sendTestWhatsApp } = require("./whatsapp.service");
 
+// ==========================================
+// GET LATEST CHANNEL LOG
+// ==========================================
+
+const getLatestChannelLog = async (campaignId, channel) => {
+  return CampaignDeliveryLog.findOne({
+    where: {
+      campaignId,
+      channel,
+    },
+
+    order: [
+      ["attemptNumber", "DESC"],
+
+      ["id", "DESC"],
+    ],
+  });
+};
+
+// ==========================================
+// GET NEXT ATTEMPT NUMBER
+// ==========================================
+
+const getNextAttemptNumber = async (campaignId, channel) => {
+  const latestLog = await getLatestChannelLog(campaignId, channel);
+
+  if (!latestLog) {
+    return 1;
+  }
+
+  return Number(latestLog.attemptNumber || 0) + 1;
+};
+
+// ==========================================
 // SIMULATE CAMPAIGN DELIVERY
+// ==========================================
+
 const simulateCampaignDelivery = async (campaignId) => {
   const campaign = await Campaign.findByPk(campaignId, {
     include: [
       {
         model: Segment,
+
         as: "segment",
+
         attributes: ["id", "code", "name"],
       },
     ],
   });
 
-
+  // ======================================
   // Campaign validation
+  // ======================================
+
   if (!campaign) {
     const error = new Error("Campaign tidak ditemukan.");
 
@@ -55,7 +98,10 @@ const simulateCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
+  // ======================================
   // Channel validation
+  // ======================================
+
   if (!campaign.whatsappEnabled && !campaign.emailEnabled) {
     const error = new Error("Minimal satu channel campaign harus diaktifkan.");
 
@@ -64,7 +110,10 @@ const simulateCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
-  // Prevent duplicate delivery
+  // ======================================
+  // Prevent duplicate simulation
+  // ======================================
+
   const existingLogs = await CampaignDeliveryLog.count({
     where: {
       campaignId: campaign.id,
@@ -79,7 +128,10 @@ const simulateCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
+  // ======================================
   // Get frozen targets
+  // ======================================
+
   const targets = await CampaignTarget.findAll({
     where: {
       campaignId: campaign.id,
@@ -108,13 +160,19 @@ const simulateCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
+  // ======================================
   // Build simulation logs
+  // ======================================
+
   const logs = [];
 
   for (const target of targets) {
     const customer = target.customer;
 
-    // WANGSAF
+    // ====================================
+    // WHATSAPP SIMULATION
+    // ====================================
+
     if (campaign.whatsappEnabled) {
       const hasWhatsapp = Boolean(customer.whatsapp);
 
@@ -143,7 +201,10 @@ const simulateCampaignDelivery = async (campaignId) => {
       });
     }
 
-    // EMAIL
+    // ====================================
+    // EMAIL SIMULATION
+    // ====================================
+
     if (campaign.emailEnabled) {
       const hasEmail = Boolean(customer.email);
 
@@ -171,7 +232,10 @@ const simulateCampaignDelivery = async (campaignId) => {
     }
   }
 
+  // ======================================
   // Atomic insert
+  // ======================================
+
   const dbTransaction = await sequelize.transaction();
 
   try {
@@ -188,7 +252,10 @@ const simulateCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
+  // ======================================
   // Build summary
+  // ======================================
+
   const summary = {
     totalTargets: targets.length,
 
@@ -196,13 +263,17 @@ const simulateCampaignDelivery = async (campaignId) => {
 
     whatsapp: {
       total: 0,
+
       simulated: 0,
+
       failed: 0,
     },
 
     email: {
       total: 0,
+
       simulated: 0,
+
       failed: 0,
     },
   };
@@ -238,8 +309,13 @@ const simulateCampaignDelivery = async (campaignId) => {
   };
 };
 
+// ==========================================
 // TEST CAMPAIGN DELIVERY
 // Maksimal 1 WhatsApp + 1 Email
+// Failed channel BOLEH retry
+// Sent channel TIDAK dikirim ulang
+// ==========================================
+
 const testCampaignDelivery = async (campaignId) => {
   const campaign = await Campaign.findByPk(campaignId, {
     include: [
@@ -253,7 +329,10 @@ const testCampaignDelivery = async (campaignId) => {
     ],
   });
 
+  // ======================================
   // Campaign validation
+  // ======================================
+
   if (!campaign) {
     const error = new Error("Campaign tidak ditemukan.");
 
@@ -290,7 +369,10 @@ const testCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
-  // Target wajib sudah dibekukan
+  // ======================================
+  // Frozen target wajib tersedia
+  // ======================================
+
   const firstTarget = await CampaignTarget.findOne({
     where: {
       campaignId: campaign.id,
@@ -307,180 +389,261 @@ const testCampaignDelivery = async (campaignId) => {
     throw error;
   }
 
-
-  // Prevent duplicate test delivery
-  const existingLogs = await CampaignDeliveryLog.count({
-    where: {
-      campaignId: campaign.id,
-    },
-  });
-
-  if (existingLogs > 0) {
-    const error = new Error("Campaign ini sudah memiliki delivery log.");
-
-    error.status = 409;
-
-    throw error;
-  }
+  // ======================================
+  // Result container
+  // ======================================
 
   const results = {
     whatsapp: null,
+
     email: null,
   };
 
-  // WANGSAF TEST
+  // ======================================
+  // WHATSAPP TEST
+  // ======================================
+
   if (campaign.whatsappEnabled) {
-    try {
-      const waResult = await sendTestWhatsApp({
-        message:
-          campaign.whatsappMessage ||
-          campaign.offerDescription ||
-          "Promo spesial dari ORLIN Salon.",
-      });
+    const latestWhatsappLog = await getLatestChannelLog(
+      campaign.id,
+      "whatsapp",
+    );
 
-      await CampaignDeliveryLog.create({
-        campaignId: campaign.id,
-
-        customerId: firstTarget.customerId,
-
-        channel: "whatsapp",
-
-        recipient: waResult.recipient,
-
-        status: "sent",
-
-        attemptNumber: 1,
-
-        providerMessageId: waResult.messageId,
-
-        errorMessage: null,
-
-        sentAt: new Date(),
-      });
-
+    // Sudah sukses sebelumnya:
+    // jangan kirim ulang.
+    if (latestWhatsappLog && latestWhatsappLog.status === "sent") {
       results.whatsapp = {
         success: true,
 
-        recipient: waResult.recipient,
+        skipped: true,
 
-        messageId: waResult.messageId,
+        recipient: latestWhatsappLog.recipient,
+
+        messageId: latestWhatsappLog.providerMessageId,
+
+        note: "WhatsApp test sudah pernah berhasil dikirim.",
       };
-    } catch (error) {
-      const recipient = process.env.TEST_WHATSAPP_RECIPIENT || "N/A";
+    } else {
+      const attemptNumber = await getNextAttemptNumber(campaign.id, "whatsapp");
 
-      await CampaignDeliveryLog.create({
-        campaignId: campaign.id,
+      try {
+        const waResult = await sendTestWhatsApp({
+          message:
+            campaign.whatsappMessage ||
+            campaign.offerDescription ||
+            "Promo spesial dari ORLIN Salon.",
+        });
 
-        customerId: firstTarget.customerId,
+        const waMessageId =
+          waResult.providerMessageId || waResult.messageId || null;
 
-        channel: "whatsapp",
+        await CampaignDeliveryLog.create({
+          campaignId: campaign.id,
 
-        recipient,
+          customerId: firstTarget.customerId,
 
-        status: "failed",
+          channel: "whatsapp",
 
-        attemptNumber: 1,
+          recipient: waResult.recipient,
 
-        providerMessageId: null,
+          status: "sent",
 
-        errorMessage: error.message,
+          attemptNumber,
 
-        sentAt: null,
-      });
+          providerMessageId: waMessageId,
 
-      results.whatsapp = {
-        success: false,
+          errorMessage: null,
 
-        recipient,
+          sentAt: new Date(),
+        });
 
-        error: error.message,
-      };
+        results.whatsapp = {
+          success: true,
+
+          skipped: false,
+
+          recipient: waResult.recipient,
+
+          messageId: waMessageId,
+
+          attemptNumber,
+        };
+      } catch (error) {
+        const recipient = process.env.WHATSAPP_TEST_RECIPIENT || "N/A";
+
+        await CampaignDeliveryLog.create({
+          campaignId: campaign.id,
+
+          customerId: firstTarget.customerId,
+
+          channel: "whatsapp",
+
+          recipient,
+
+          status: "failed",
+
+          attemptNumber,
+
+          providerMessageId: null,
+
+          errorMessage: error.message,
+
+          sentAt: null,
+        });
+
+        results.whatsapp = {
+          success: false,
+
+          skipped: false,
+
+          recipient,
+
+          error: error.message,
+
+          attemptNumber,
+        };
+      }
     }
   }
 
+  // ======================================
   // EMAIL TEST
+  // ======================================
+
   if (campaign.emailEnabled) {
-    try {
-      const emailResult = await sendTestEmail({
-        subject: campaign.emailSubject || "Promo ORLIN Salon",
+    const latestEmailLog = await getLatestChannelLog(campaign.id, "email");
 
-        body:
-          campaign.emailBody ||
-          campaign.offerDescription ||
-          "Promo spesial dari ORLIN Salon.",
-      });
-
-      await CampaignDeliveryLog.create({
-        campaignId: campaign.id,
-
-        customerId: firstTarget.customerId,
-
-        channel: "email",
-
-        recipient: emailResult.recipient,
-
-        status: "sent",
-
-        attemptNumber: 1,
-
-        providerMessageId: emailResult.messageId,
-
-        errorMessage: null,
-
-        sentAt: new Date(),
-      });
-
+    // Sudah sukses sebelumnya:
+    // jangan kirim ulang.
+    if (latestEmailLog && latestEmailLog.status === "sent") {
       results.email = {
         success: true,
 
-        recipient: emailResult.recipient,
+        skipped: true,
 
-        messageId: emailResult.messageId,
+        recipient: latestEmailLog.recipient,
+
+        messageId: latestEmailLog.providerMessageId,
+
+        note: "Email test sudah pernah berhasil dikirim.",
       };
-    } catch (error) {
-      const recipient = process.env.TEST_EMAIL_RECIPIENT || "N/A";
+    } else {
+      const attemptNumber = await getNextAttemptNumber(campaign.id, "email");
 
-      await CampaignDeliveryLog.create({
-        campaignId: campaign.id,
+      try {
+        console.log("[Campaign Test] Sending email:", {
+          campaignId: campaign.id,
 
-        customerId: firstTarget.customerId,
+          subject: campaign.emailSubject,
 
-        channel: "email",
+          recipient: process.env.EMAIL_TEST_RECIPIENT,
+        });
 
-        recipient,
+        const emailResult = await sendTestEmail({
+          subject: campaign.emailSubject || "Promo ORLIN Salon",
 
-        status: "failed",
+          body:
+            campaign.emailBody ||
+            campaign.offerDescription ||
+            "Promo spesial dari ORLIN Salon.",
+        });
 
-        attemptNumber: 1,
+        // email.service.js Brevo
+        // mengembalikan providerMessageId
+        const emailMessageId =
+          emailResult.providerMessageId || emailResult.messageId || null;
 
-        providerMessageId: null,
+        await CampaignDeliveryLog.create({
+          campaignId: campaign.id,
 
-        errorMessage: error.message,
+          customerId: firstTarget.customerId,
 
-        sentAt: null,
-      });
+          channel: "email",
 
-      results.email = {
-        success: false,
+          recipient: emailResult.recipient,
 
-        recipient,
+          status: "sent",
 
-        error: error.message,
-      };
+          attemptNumber,
+
+          providerMessageId: emailMessageId,
+
+          errorMessage: null,
+
+          sentAt: new Date(),
+        });
+
+        results.email = {
+          success: true,
+
+          skipped: false,
+
+          recipient: emailResult.recipient,
+
+          messageId: emailMessageId,
+
+          attemptNumber,
+        };
+      } catch (error) {
+        const recipient = process.env.EMAIL_TEST_RECIPIENT || "N/A";
+
+        console.error("[Campaign Test] Email failed:", error.message);
+
+        await CampaignDeliveryLog.create({
+          campaignId: campaign.id,
+
+          customerId: firstTarget.customerId,
+
+          channel: "email",
+
+          recipient,
+
+          status: "failed",
+
+          attemptNumber,
+
+          providerMessageId: null,
+
+          errorMessage: error.message,
+
+          sentAt: null,
+        });
+
+        results.email = {
+          success: false,
+
+          skipped: false,
+
+          recipient,
+
+          error: error.message,
+
+          attemptNumber,
+        };
+      }
     }
   }
 
-  // Result summary
+  // ======================================
+  // RESULT SUMMARY
+  // ======================================
+
   const enabledChannels = [
     campaign.whatsappEnabled ? results.whatsapp : null,
 
     campaign.emailEnabled ? results.email : null,
   ].filter(Boolean);
 
-  const sentCount = enabledChannels.filter((result) => result.success).length;
+  const sentCount = enabledChannels.filter(
+    (result) => result.success && !result.skipped,
+  ).length;
 
   const failedCount = enabledChannels.filter(
     (result) => !result.success,
+  ).length;
+
+  const skippedCount = enabledChannels.filter(
+    (result) => result.skipped,
   ).length;
 
   return {
@@ -500,6 +663,8 @@ const testCampaignDelivery = async (campaignId) => {
       sent: sentCount,
 
       failed: failedCount,
+
+      skipped: skippedCount,
     },
 
     results,

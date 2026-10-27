@@ -27,6 +27,8 @@ const reportRoutes = require("./routes/report.routes");
 
 const aiAdvisorRoutes = require("./routes/aiAdvisor.routes");
 
+const emailTestRoutes = require("./routes/emailTest.routes");
+
 const {
   swaggerUi,
   swaggerDocument,
@@ -79,6 +81,8 @@ app.use("/api/crm-insights", crmInsightRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/ai-advisor", aiAdvisorRoutes);
+app.use("/api/email-test", emailTestRoutes);
+
 
 // Root Route
 app.get("/", (req, res) => {
