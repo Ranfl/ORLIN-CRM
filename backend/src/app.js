@@ -28,6 +28,7 @@ const reportRoutes = require("./routes/report.routes");
 const aiAdvisorRoutes = require("./routes/aiAdvisor.routes");
 
 const emailTestRoutes = require("./routes/emailTest.routes");
+const whatsappRoutes = require("./routes/whatsapp.routes");
 
 const {
   swaggerUi,
@@ -82,6 +83,8 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/ai-advisor", aiAdvisorRoutes);
 app.use("/api/email-test", emailTestRoutes);
+app.use("/api/whatsapp", whatsappRoutes);
+
 
 
 // Root Route

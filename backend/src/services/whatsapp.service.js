@@ -1,7 +1,11 @@
 const axios = require("axios");
 
+// ==========================================
+// SEND TEST WHATSAPP
+// ==========================================
+
 const sendTestWhatsApp = async ({ message }) => {
-  const recipient = process.env.TEST_WHATSAPP_RECIPIENT;
+  const recipient = process.env.WHATSAPP_TEST_RECIPIENT;
 
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -12,49 +16,130 @@ const sendTestWhatsApp = async ({ message }) => {
   const baseUrl =
     process.env.WHATSAPP_API_BASE_URL || "https://graph.facebook.com";
 
+  // ======================================
+  // VALIDATION
+  // ======================================
+
   if (!recipient) {
-    throw new Error("TEST_WHATSAPP_RECIPIENT belum dikonfigurasi.");
+    const error = new Error("WHATSAPP_TEST_RECIPIENT belum dikonfigurasi.");
+
+    error.status = 503;
+
+    throw error;
   }
 
-  if (!accessToken || !phoneNumberId || !graphVersion) {
-    throw new Error("Konfigurasi WhatsApp Cloud API belum lengkap.");
+  if (!accessToken) {
+    const error = new Error("WHATSAPP_ACCESS_TOKEN belum dikonfigurasi.");
+
+    error.status = 503;
+
+    throw error;
+  }
+
+  if (!phoneNumberId) {
+    const error = new Error("WHATSAPP_PHONE_NUMBER_ID belum dikonfigurasi.");
+
+    error.status = 503;
+
+    throw error;
+  }
+
+  if (!graphVersion) {
+    const error = new Error("WHATSAPP_GRAPH_VERSION belum dikonfigurasi.");
+
+    error.status = 503;
+
+    throw error;
+  }
+
+  if (!message) {
+    const error = new Error("Pesan WhatsApp tidak boleh kosong.");
+
+    error.status = 400;
+
+    throw error;
   }
 
   const url = `${baseUrl}/${graphVersion}/${phoneNumberId}/messages`;
 
-  const response = await axios.post(
-    url,
-    {
-      messaging_product: "whatsapp",
+  try {
+    console.log("[WhatsApp] Sending message:", {
+      provider: "meta",
 
-      recipient_type: "individual",
+      phoneNumberId,
 
-      to: recipient,
+      recipient,
 
-      type: "text",
+      graphVersion,
+    });
 
-      text: {
-        preview_url: false,
+    const response = await axios.post(
+      url,
 
-        body: message,
+      {
+        messaging_product: "whatsapp",
+
+        recipient_type: "individual",
+
+        to: recipient,
+
+        type: "text",
+
+        text: {
+          preview_url: false,
+
+          body: message,
+        },
       },
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
 
-        "Content-Type": "application/json",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+
+          "Content-Type": "application/json",
+        },
+
+        timeout: 30000,
       },
+    );
 
-      timeout: 30000,
-    },
-  );
+    const messageId = response.data?.messages?.[0]?.id || null;
 
-  return {
-    recipient,
+    console.log("[WhatsApp] Meta response:", {
+      recipient,
+      messageId,
+    });
 
-    messageId: response.data?.messages?.[0]?.id || null,
-  };
+    return {
+      success: true,
+
+      provider: "meta",
+
+      channel: "whatsapp",
+
+      recipient,
+
+      messageId,
+
+      providerMessageId: messageId,
+    };
+  } catch (error) {
+    console.error("[WhatsApp] Send failed:", {
+      status: error.response?.status,
+
+      data: error.response?.data,
+
+      message: error.message,
+    });
+
+    const metaMessage = error.response?.data?.error?.message || error.message;
+
+    const sendError = new Error(`WhatsApp gagal dikirim: ${metaMessage}`);
+
+    sendError.status = error.response?.status || 502;
+
+    throw sendError;
+  }
 };
 
 module.exports = {
